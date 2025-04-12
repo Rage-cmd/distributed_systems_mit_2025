@@ -30,21 +30,19 @@ func MakeLock(ck kvtest.IKVClerk, l string) *Lock {
 	lk.clientID = kvtest.RandValue(8)
 	lk.lockState = l
 
-	// lk.ck.Put(lk.lockState, "u", 0)
-	_, _, err := lk.ck.Get(lk.lockState)
-	if err == rpc.ErrNoKey {
-		// fmt.Printf("Creating a lock, putting in the server\n")
-		// for {
-		lk.ck.Put(lk.lockState, "u", 0)
-		// fmt.Printf("Putting in the server: %v\n", err)
-		// if err != rpc.ErrNoKey {
-		// break
-		// }
-	}
-	// err := lk.ck.Put(lk.lockState, "u", 0)
-	// if err != rpc.OK {
-	// 	panic(err)
+	// for {
+	_ = lk.ck.Put(lk.lockState, "u", 0)
+
+	// value, _, _ := lk.ck.Get(lk.lockState)
+
+	// if value != "u" {
+	// 	time.Sleep(10 * time.Millisecond)
+	// 	continue
 	// }
+
+	// break
+	// }
+
 	return lk
 }
 
@@ -53,27 +51,39 @@ func (lk *Lock) Acquire() {
 	// fmt.Printf("acquiring the lock\n")
 
 	// fmt.Printf("Received values: %s, %d, %v\n", value, version, err)
+	// fmt.Printf("INSIDE ACQUIRE %s-------- \n", lk.clientID)
 
 	for {
 		value, version, err := lk.ck.Get(lk.lockState)
+		// fmt.Printf("Received values: %s, %d, %v\n", value, version, err)
+
 		if err != rpc.OK {
 			panic(err)
+		}
+
+		if value == lk.clientID {
+			break
 		}
 
 		if value != "u" {
-			time.Sleep(10 * time.Millisecond)
+			time.Sleep(100 * time.Millisecond)
 			continue
 		}
-
 		err = lk.ck.Put(lk.lockState, lk.clientID, version)
+		// fmt.Printf("Attempting to acquire the lock %s, err => %v. Values received => %s, %d\n", lk.clientID, err, value, version)
 
 		if err == rpc.ErrMaybe {
+			value, _, _ = lk.ck.Get(lk.lockState)
+			if value == lk.clientID {
+				break
+			}
 			time.Sleep(10 * time.Millisecond)
 			continue
 		}
 
 		if err != rpc.OK {
-			panic(err)
+			// panic(err)
+			continue
 		}
 		break
 		// value, version, err = lk.ck.Get(lk.lockState)
@@ -86,15 +96,36 @@ func (lk *Lock) Acquire() {
 
 func (lk *Lock) Release() {
 	// Your code here
+	// fmt.Printf("INSIDE RELEASE %s-------- \n", lk.clientID)
+
 	value, version, err := lk.ck.Get(lk.lockState)
+	// fmt.Printf("Releasing lock: %s, %d, %v\n", value, version, err)
+
 	if err != rpc.OK {
 		panic(err)
 	}
-	if value != lk.clientID {
-		panic("cannot release as the lock was not acquired")
+	// if value != lk.clientID {
+	// 	fmt.Printf("Value of the lock is %s, expected %s\n", value, lk.clientID)
+	// 	panic("cannot release as the lock was not acquired")
+	// }
+	for {
+		err = lk.ck.Put(lk.lockState, "u", version)
+
+		if err == rpc.ErrMaybe {
+			value, version, _ = lk.ck.Get(lk.lockState)
+
+			if value == "u" {
+				break
+			}
+			time.Sleep(100 * time.Millisecond)
+			continue
+		}
+
+		if err != rpc.OK {
+			continue
+		}
+		// time.Sleep(100 * time.Millisecond)
+		break
 	}
-	err = lk.ck.Put(lk.lockState, "u", version)
-	if err != rpc.OK && err != rpc.ErrMaybe {
-		panic(err)
-	}
+	// fmt.Printf("Released Lock for verison: %d\n", version)
 }
